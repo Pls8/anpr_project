@@ -1,0 +1,12 @@
+{
+    "project_name": "Omani ANPR",
+    "description": "Automatic Number Plate Recognition for Omani License Plates",
+    "data": {
+        "train_path": "../oman-licenceplates/dataset/train",
+        "validation_path": "../oman-licenceplates/dataset/validation"
+    },
+    "model": {
+        "ocr_engine": "easyocr",
+        "languages": ["en", "ar"]
+    }
+}
