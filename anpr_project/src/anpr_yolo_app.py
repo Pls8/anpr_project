@@ -1,6 +1,7 @@
 """
 ANPR Application using YOLO Detection + EfficientNet OCR
 Updated to use trained YOLO detector and EfficientNet-B0 OCR
+Supports ensemble prediction using multiple OCR models
 """
 
 import os
@@ -20,6 +21,7 @@ ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ _"  # Added '_' as blank token 
 NUM_CLASSES = len(ALPHABET)
 
 OCR_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'best_improved_ocr_v5.pth')
+OCR_MODEL_AUGMENTED_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'best_improved_ocr_v5_augmented.pth')
 YOLO_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'runs', 'detect', 'oman_plate_detector_yolov8s', 'weights', 'best.pt')
 
 
@@ -46,9 +48,15 @@ def preprocess_plate_image(image):
 
 
 class EfficientNetOCR(nn.Module):
-    def __init__(self):
+    def __init__(self, model_name='efficientnet_b0'):
         super().__init__()
-        self.backbone = models.efficientnet_b0(weights=None)
+        if model_name == 'efficientnet_b1':
+            self.backbone = models.efficientnet_b1(weights=None)
+            self.input_size = 240
+        else:
+            self.backbone = models.efficientnet_b0(weights=None)
+            self.input_size = 224
+        
         in_features = self.backbone.classifier[1].in_features
         self.backbone.classifier = nn.Identity()
         self.classifiers = nn.ModuleList([
@@ -62,11 +70,12 @@ class EfficientNetOCR(nn.Module):
 
 
 class ANPR:
-    def __init__(self, ocr_model_path=None, yolo_model_path=None, device=None):
+    def __init__(self, ocr_model_path=None, yolo_model_path=None, device=None, use_ensemble=True):
         self.device = device or ('cpu')
         
         self.ocr_model_path = ocr_model_path or OCR_MODEL_PATH
         self.yolo_model_path = yolo_model_path or YOLO_MODEL_PATH
+        self.use_ensemble = use_ensemble
         
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)),
@@ -76,7 +85,9 @@ class ANPR:
         
         print("Loading YOLO detector...")
         self.yolo = YOLO(self.yolo_model_path)
-        print("Loading OCR model...")
+        
+        # Load main OCR model
+        print("Loading main OCR model...")
         self.ocr = EfficientNetOCR()
         checkpoint = torch.load(self.ocr_model_path, map_location=self.device, weights_only=False)
         if 'model_state_dict' in checkpoint:
@@ -85,6 +96,24 @@ class ANPR:
             self.ocr.load_state_dict(checkpoint)
         self.ocr = self.ocr.to(self.device)
         self.ocr.eval()
+        
+        # Load augmented OCR model for ensemble
+        if self.use_ensemble and os.path.exists(OCR_MODEL_AUGMENTED_PATH):
+            print("Loading augmented OCR model for ensemble...")
+            self.ocr_augmented = EfficientNetOCR()
+            checkpoint = torch.load(OCR_MODEL_AUGMENTED_PATH, map_location=self.device, weights_only=False)
+            if 'model_state_dict' in checkpoint:
+                self.ocr_augmented.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                self.ocr_augmented.load_state_dict(checkpoint)
+            self.ocr_augmented = self.ocr_augmented.to(self.device)
+            self.ocr_augmented.eval()
+            print("Ensemble mode enabled!")
+        else:
+            self.ocr_augmented = None
+            if use_ensemble:
+                print("Augmented model not found, using single model mode")
+        
         print("Models loaded successfully!")
     
     def detect_plate(self, image_path):
@@ -149,6 +178,34 @@ class ANPR:
         
         return result
     
+    def ensemble_predict(self, tensor):
+        """
+        Ensemble prediction using multiple OCR models.
+        Combines predictions from main and augmented models.
+        """
+        results = []
+        
+        # Main model prediction
+        with torch.no_grad():
+            preds_main = torch.argmax(self.ocr(tensor), dim=2)
+        text_main = self.decode_predictions(preds_main[0])
+        results.append(text_main)
+        
+        # Augmented model prediction (if available)
+        if self.ocr_augmented is not None:
+            with torch.no_grad():
+                preds_aug = torch.argmax(self.ocr_augmented(tensor), dim=2)
+            text_aug = self.decode_predictions(preds_aug[0])
+            results.append(text_aug)
+        
+        # If models agree, return that result
+        if len(set(results)) == 1:
+            return results[0]
+        
+        # If they disagree, prefer the longer result (more characters)
+        # or return the first one as default
+        return max(results, key=len) if all(r for r in results) else results[0]
+    
     def recognize_plate(self, image_path):
         """Full ANPR: Detect and recognize plate"""
         # Load image
@@ -193,10 +250,13 @@ class ANPR:
         
         tensor = self.transform(plate_pil).unsqueeze(0).to(self.device)
         
-        with torch.no_grad():
-            preds = torch.argmax(self.ocr(tensor), dim=2)
-        
-        text = self.decode_predictions(preds[0])
+        # Use ensemble or single model based on setting
+        if self.use_ensemble and self.ocr_augmented is not None:
+            text = self.ensemble_predict(tensor)
+        else:
+            with torch.no_grad():
+                preds = torch.argmax(self.ocr(tensor), dim=2)
+            text = self.decode_predictions(preds[0])
         
         return {
             'plate_text': text,
