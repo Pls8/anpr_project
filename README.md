@@ -35,7 +35,19 @@ python anpr_project/src/web_app.py
 | Model | Metric | Value |
 |-------|--------|-------|
 | YOLOv8s Detection | mAP50 | 0.991 |
-| EfficientNet-B0 OCR | Val Accuracy | 79.78% |
+| EfficientNet-B0 OCR (v5) | Val Accuracy | **79.78%** |
+| EfficientNet-B0 Augmented | Val Accuracy | 79.27% |
+| EfficientNet-B0 v7 | Val Accuracy | 79.53% |
+
+## Available OCR Models
+
+| File | Description | Accuracy |
+|------|-------------|----------|
+| `best_improved_ocr_v5.pth` | Main model (recommended) | 79.78% |
+| `best_improved_ocr_v5_augmented.pth` | Better generalization | 79.27% |
+| `best_improved_ocr_v7.pth` | Continued from augmented | 79.53% |
+
+**Note**: EfficientNet-B1 was tested but did not outperform B0. See PROJECT_README.md for details.
 
 ## Plate Format
 
@@ -47,9 +59,21 @@ Supports Oman license plates:
 
 | File | Description |
 |------|-------------|
-| `best_improved_ocr_v5.pth` | Main OCR model (79.78% accuracy) |
-| `best_improved_ocr_v5_augmented.pth` | OCR with data augmentation |
-| `runs/detect/.../best.pt` | YOLOv8s plate detector |
+| `best_improved_ocr_v5.pth` | Main OCR model (79.78% accuracy) - RECOMMENDED |
+| `best_improved_ocr_v5_augmented.pth` | OCR with data augmentation (better generalization) |
+| `best_improved_ocr_v7.pth` | Trained from augmented model (79.53%) |
+| `runs/detect/.../best.pt` | YOLOv8s plate detector (mAP50: 0.991) |
+
+## Features
+
+- **Image Upload**: Upload car images for plate detection
+- **Video Streaming**: Live camera feed for real-time detection
+- **Ensemble Prediction**: Uses both OCR models for better accuracy
+
+## Web App Routes
+
+- `http://localhost:5000/` - Image upload
+- `http://localhost:5000/video` - Live video stream
 
 ## For Training (Optional)
 

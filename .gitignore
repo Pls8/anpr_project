@@ -30,7 +30,7 @@ env/
 checkpoints/
 *.ckpt
 
-# Include specific model files
+# Include specific model files (for release)
 !best_improved_ocr_v5.pth
 !best_improved_ocr_v5_augmented.pth
 !best_improved_ocr_v7.pth
