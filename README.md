@@ -67,13 +67,14 @@ Supports Oman license plates:
 ## Features
 
 - **Image Upload**: Upload car images for plate detection
-- **Video Streaming**: Live camera feed for real-time detection
+- **Video Streaming**: Live camera feed for real-time detection (2 options)
 - **Ensemble Prediction**: Uses both OCR models for better accuracy
 
 ## Web App Routes
 
 - `http://localhost:5000/` - Image upload
-- `http://localhost:5000/video` - Live video stream
+- `http://localhost:5000/video` - Live video stream (OpenCV-based)
+- `http://localhost:5000/video2` - Live video stream (Browser getUserMedia - recommended)
 
 ## For Training (Optional)
 

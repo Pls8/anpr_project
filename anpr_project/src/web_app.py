@@ -106,6 +106,12 @@ def video_page():
     return render_template('video.html')
 
 
+@app.route('/video2')
+def video_page2():
+    """Video streaming page with browser getUserMedia API"""
+    return render_template('video2.html')
+
+
 @app.route('/video/feed')
 def video_feed():
     """Video streaming endpoint"""

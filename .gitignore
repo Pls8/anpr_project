@@ -77,3 +77,6 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# Local project readme (not for GitHub)
+PROJECT_README_LOCAL.md

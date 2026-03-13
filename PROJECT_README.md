@@ -188,7 +188,7 @@ We tested EfficientNet-B1 (larger model) to try to improve accuracy:
 ### OCR Training (v5) - Current Best
 
 ```bash
-cd /mnt/c/Users/Masad/Documents/aiPorject/Test3OC/anpr_project/src
+cd anpr_project/src
 source ~/anpr_project/venv/bin/activate
 export HSA_OVERRIDE_GFX_VERSION=11.0.0
 export LD_PRELOAD=/opt/rocm/lib/libamdhip64.so
@@ -202,7 +202,7 @@ Training auto-resumes from last epoch if checkpoint exists.
 ### YOLO Training (v8n/v8s)
 
 ```bash
-cd /home/night/anpr_project
+cd anpr_project
 source venv/bin/activate
 export HSA_OVERRIDE_GFX_VERSION=11.0.0
 export LD_PRELOAD=/opt/rocm/lib/libamdhip64.so
@@ -211,12 +211,12 @@ python -c "
 from ultralytics import YOLO
 model = YOLO('yolov8n.pt')  # or 'yolov8s.pt'
 model.train(
-    data='/mnt/c/Users/Masad/Documents/aiPorject/Test3OC/oman-licenceplates/yolo_dataset/dataset.yaml',
+    data='oman-licenceplates/yolo_dataset/dataset.yaml',
     epochs=50,
     imgsz=640,
     batch=8,
     name='oman_plate_detector',
-    project='/mnt/c/Users/Masad/Documents/aiPorject/Test3OC/runs/detect',
+    project='runs/detect',
     device=0
 )
 "
@@ -229,7 +229,7 @@ model.train(
 ### Running the Web App
 
 ```bash
-cd /mnt/c/Users/Masad/Documents/aiPorject/Test3OC/anpr_project/src
+cd anpr_project/src
 source ~/anpr_project/venv/bin/activate
 export HSA_OVERRIDE_GFX_VERSION=11.0.0
 export LD_PRELOAD=/opt/rocm/lib/libamdhip64.so
@@ -242,8 +242,16 @@ Then open **http://localhost:5000** in browser.
 
 - `web_app.py` - Flask backend (imports from `anpr_yolo_app.py`)
 - `anpr_yolo_app.py` - ANPR class with YOLO + OCR (includes CLAHE preprocessing)
-- `templates/index.html` - HTML frontend
+- `templates/index.html` - HTML frontend (with video buttons)
+- `templates/video.html` - OpenCV-based video streaming
+- `templates/video2.html` - Browser getUserMedia video streaming (recommended)
 - `static/uploads/` - Uploaded images
+
+### Web App Routes:
+
+- `http://localhost:5000/` - Image upload
+- `http://localhost:5000/video` - Live video stream (OpenCV-based)
+- `http://localhost:5000/video2` - Live video stream (Browser getUserMedia - recommended)
 
 ---
 
