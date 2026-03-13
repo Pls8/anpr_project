@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="https://github.com/Pls8/anpr_project/blob/main/Repo-anpr_00.jpg?raw=true" >
+</div>
+
 # ANPR System for Omani License Plates
 
 Automatic Number Plate Recognition system using YOLO for detection and EfficientNet for OCR.
