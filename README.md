@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/Pls8/anpr_project/blob/main/Repo-anpr_00.jpg?raw=true" >
+  <img src="https://github.com/Pls8/anpr_project/blob/main/Repo-anpr_002_00.jpg?raw=true" >
 </div>
 
 # ANPR System for Omani License Plates
