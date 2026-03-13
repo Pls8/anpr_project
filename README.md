@@ -85,3 +85,192 @@ See `anpr_project/src/train_improved_ocr_v5.py` for OCR training.
 ### GPU Not Detected (Training Only)
 - Install ROCm: `sudo apt install rocm-libs hipblaslt`
 - Set environment: `export HSA_OVERRIDE_GFX_VERSION=11.0.0`
+
+---
+
+## Architecture & How It Works
+
+### System Overview
+
+This ANPR system uses a **two-stage pipeline**:
+
+```
+Input Image/Video → [YOLO Detector] → Crop Plate → [EfficientNet OCR] → Plate Text
+```
+
+### Components
+
+| Component | Model | Purpose |
+|-----------|-------|---------|
+| **Detector** | YOLOv8s | Finds license plate location in image |
+| **OCR** | EfficientNet-B0 | Reads text from cropped plate image |
+
+### Core Module: `anpr_yolo_app.py`
+
+The `ANPR` class (`anpr_project/src/anpr_yolo_app.py`) is the core module that handles:
+- Loading YOLO and OCR models
+- Plate detection using YOLO
+- Image preprocessing (CLAHE for contrast enhancement)
+- OCR prediction with ensemble (uses 2 OCR models)
+- Post-processing (removes extra spaces, handles Oman plate format)
+
+```python
+from anpr_yolo_app import ANPR
+
+anpr = ANPR()  # Loads models
+result = anpr.predict("car_image.jpg")  # Returns plate text
+```
+
+---
+
+## Workflows
+
+### Workflow 1: Image Upload (/)
+
+```
+┌──────────┐    ┌─────────────┐    ┌──────────────┐    ┌────────────┐
+│ User     │    │ Flask       │    │ ANPR Class   │    │ Response  │
+│ selects  │───▶│ receives    │───▶│ (YOLO+OCR)  │───▶│ with plate │
+│ image    │    │ POST /upload│    │ processes   │    │ text      │
+└──────────┘    └─────────────┘    └──────────────┘    └────────────┘
+```
+
+**Steps:**
+1. User selects image file in browser
+2. Browser sends POST request with image to `/upload`
+3. Flask saves image temporarily
+4. `ANPR.predict()` processes image:
+   - YOLO detects plate location
+   - Plate is cropped
+   - CLAHE preprocessing applied
+   - EfficientNet OCR reads text
+   - Ensemble prediction (2 models)
+   - Post-processing (format fix)
+5. Returns plate text to browser
+
+---
+
+### Workflow 2: Video Streaming - OpenCV (/video)
+
+```
+┌──────────┐    ┌─────────────┐    ┌──────────────┐    ┌────────────┐
+│ Browser  │    │ Flask       │    │ Video       │    │ Browser   │
+│ starts   │───▶│ opens       │───▶│ capture     │───▶│ displays  │
+│ camera   │    │ VideoCapture│    │ thread      │    │ MJPEG     │
+└──────────┘    └─────────────┘    └──────────────┘    └────────────┘
+                     │                    │
+                     │                    ▼
+                     │             ┌──────────────┐
+                     └────────────▶│ ANPR Class   │
+                                  │ (YOLO+OCR)  │
+                                  └──────────────┘
+```
+
+**Steps:**
+1. User clicks "Start Camera" in browser
+2. Browser sends POST to `/video/start`
+3. Flask opens OpenCV VideoCapture (camera index 0)
+4. Background thread continuously:
+   - Captures frames from camera
+   - Sends to ANPR for processing
+   - Draws result on frame
+5. Flask streams frames as MJPEG via `/video/feed`
+
+**Issue:** May have camera access problems in some browsers.
+
+---
+
+### Workflow 3: Video Streaming - Browser getUserMedia (/video2) [Recommended]
+
+```
+┌──────────┐    ┌─────────────┐    ┌──────────────┐    ┌────────────┐
+│ Browser  │    │ Browser     │    │ Canvas      │    │ Browser   │
+│ accesses │───▶│ getUserMedia│───▶│ captures    │───▶│ displays  │
+│ /video2  │    │ API         │    │ frame       │    │ video     │
+└──────────┘    └─────────────┘    └──────────────┘    └────────────┘
+                                           │
+                                           ▼
+                                    ┌──────────────┐
+                                    │ POST /upload │
+                                    │ (sends blob) │
+                                    └──────────────┘
+                                           │
+                                           ▼
+                                    ┌──────────────┐
+                                    │ ANPR Class   │
+                                    │ (YOLO+OCR)   │
+                                    └──────────────┘
+```
+
+**Steps:**
+1. User opens `/video2` page
+2. Browser uses native `getUserMedia` API to access camera
+3. Every 500ms, browser:
+   - Captures frame to canvas
+   - Converts to blob
+   - Sends POST to `/upload`
+4. Server processes and returns plate text
+5. Browser displays result
+
+**Why it's recommended:** Uses browser's built-in camera API, works better on most systems.
+
+---
+
+### Why Video Is Laggy (And How to Improve)
+
+**Current bottleneck:**
+- Each frame → HTTP POST → Server processes → HTTP response → Display
+- Even on localhost, HTTP adds overhead per frame
+
+**Solutions:**
+
+| Option | Implementation | Latency |
+|--------|---------------|---------|
+| **Reduce frame rate** | Process every 5th frame | Medium |
+| **WebSocket** | Keep connection open | Faster |
+| **WebRTC** | P2P streaming | Fastest |
+| **Client-side OCR** | Run model in browser (TensorFlow.js) | Fastest but complex |
+
+For now, `/video2` processes every 500ms which should be smoother. If still laggy, we can:
+1. Reduce processing frequency
+2. Add a simpler/faster model
+3. Consider local-only option (like Tkinter)
+
+---
+
+### Training Workflow
+
+```
+┌──────────┐    ┌─────────────┐    ┌──────────────┐    ┌────────────┐
+│ Training │    │ Load       │    │ Train       │    │ Save best  │
+│ script   │───▶│ dataset    │───▶│ EfficientNet │───▶│ model      │
+│          │    │ (JSONL)    │    │ (GPU/CPU)   │    │ (.pth)     │
+└──────────┘    └─────────────┘    └──────────────┘    └────────────┘
+```
+
+See `anpr_project/src/train_improved_ocr_v5.py` for training code.
+
+---
+
+### File Structure
+
+```
+anpr_project/
+├── src/
+│   ├── anpr_yolo_app.py      # Core ANPR class (YOLO + OCR)
+│   ├── web_app.py            # Flask web server
+│   ├── train_improved_ocr_v5.py  # OCR training script
+│   └── templates/
+│       ├── index.html        # Main upload page
+│       ├── video.html        # OpenCV video page
+│       └── video2.html       # Browser getUserMedia video
+├── test_images/              # Test images
+static/uploads/               # Uploaded images (runtime)
+```
+
+### Key Environment Variables (for AMD GPU/ROCm)
+
+```bash
+export HSA_OVERRIDE_GFX_VERSION=11.0.0
+export LD_PRELOAD=/opt/rocm/lib/libamdhip64.so
+```
