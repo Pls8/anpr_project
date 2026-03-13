@@ -30,10 +30,16 @@ env/
 checkpoints/
 *.ckpt
 
+# Include specific model files
+!best_improved_ocr_v5.pth
+!best_improved_ocr_v5_augmented.pth
+!best_improved_ocr_v7.pth
+
 # YOLO training outputs
 runs/
 weights/
 yolo_runs/
+!/runs/detect/oman_plate_detector_yolov8s/weights/best.pt
 
 # Jupyter
 .ipynb_checkpoints/

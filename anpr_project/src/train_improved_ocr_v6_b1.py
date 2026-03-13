@@ -25,12 +25,19 @@ BLANK_IDX = ALPHABET.index('_')
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 TEST3OC_DIR = os.path.dirname(PROJECT_DIR)
+
+# Original dataset only
 TRAIN_DIR = os.path.join(TEST3OC_DIR, "oman-licenceplates", "dataset", "train")
 VAL_DIR = os.path.join(TEST3OC_DIR, "oman-licenceplates", "dataset", "validation")
-CUSTOM_DIR = os.path.join(PROJECT_DIR, "test_images")
-MODEL_SAVE_PATH = os.path.join(TEST3OC_DIR, "best_improved_ocr_v6_b1.pth")
 
-print(f"=== OCR Training v6 - EfficientNet-B1 ===")
+CUSTOM_DIR = os.path.join(PROJECT_DIR, "test_images")
+MODEL_SAVE_PATH = os.path.join(TEST3OC_DIR, "best_improved_ocr_v6_b1_v4.pth")
+
+# Start from augmented model
+PRETRAINED_MODEL_PATH = os.path.join(TEST3OC_DIR, "best_improved_ocr_v5_augmented.pth")
+
+print(f"=== OCR Training v6 - EfficientNet-B1 (v4) ===")
+print(f"Starting from: {PRETRAINED_MODEL_PATH}")
 print(f"Alphabet: {ALPHABET}")
 print(f"Number of classes: {NUM_CLASSES}")
 print(f"Blank token index: {BLANK_IDX}")
@@ -39,25 +46,31 @@ print(f"Image size: 240x240 (B1)")
 
 
 class CombinedDataset(Dataset):
-    def __init__(self, data_dir, custom_dir=None, transform=None):
-        self.data_dir = data_dir
+    def __init__(self, data_dirs, custom_dir=None, transform=None):
+        if isinstance(data_dirs, str):
+            data_dirs = [data_dirs]
+        
+        self.data_dirs = data_dirs
         self.custom_dir = custom_dir
         self.transform = transform
         self.labels = {}
         
-        metadata_path = os.path.join(data_dir, 'metadata.jsonl')
-        if os.path.exists(metadata_path):
-            with open(metadata_path, 'r') as f:
-                for line in f:
-                    data = json.loads(line.strip())
-                    fname = data['file_name']
-                    text = data['text']
-                    number_match = re.search(r'<s_lp_number>\s*(.*?)\s*</s_lp_number>', text)
-                    if number_match:
-                        plate = number_match.group(1).strip().upper()
-                        plate = ''.join([c for c in plate if c in ALPHABET.replace('_', '')])
-                        if plate and '<unk>' not in plate and len(plate) <= MAX_PLATE_LEN:
-                            self.labels[fname] = plate
+        for data_dir in data_dirs:
+            metadata_path = os.path.join(data_dir, 'metadata.jsonl')
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'r') as f:
+                    for line in f:
+                        data = json.loads(line.strip())
+                        fname = data['file_name']
+                        text = data['text']
+                        number_match = re.search(r'<s_lp_number>\s*(.*?)\s*</s_lp_number>', text)
+                        if number_match:
+                            plate = number_match.group(1).strip().upper()
+                            plate = ''.join([c for c in plate if c in ALPHABET.replace('_', '')])
+                            if plate and '<unk>' not in plate and len(plate) <= MAX_PLATE_LEN:
+                                # Store full path with filename
+                                full_path = os.path.join(data_dir, fname)
+                                self.labels[full_path] = plate
         
         if custom_dir and os.path.exists(custom_dir):
             custom_labels = {}
@@ -73,16 +86,15 @@ class CombinedDataset(Dataset):
             self.custom_files = []
         
         self.image_files = list(self.labels.keys())
-        print(f"Loaded {len(self.image_files)} dataset images")
+        print(f"Loaded {len(self.image_files)} dataset images from {len(data_dirs)} directories")
     
     def __len__(self):
         return len(self.image_files) + len(self.custom_files)
     
     def __getitem__(self, idx):
         if idx < len(self.image_files):
-            fname = self.image_files[idx]
-            img_path = os.path.join(self.data_dir, fname)
-            plate_text = self.labels[fname]
+            img_path = self.image_files[idx]  # Full path now stored
+            plate_text = self.labels[img_path]
         else:
             cidx = idx - len(self.image_files)
             fname = self.custom_files[cidx]
@@ -210,12 +222,13 @@ def main():
     ])
     
     print("\nLoading datasets...")
+    # Use only original dataset
     train_dataset = CombinedDataset(TRAIN_DIR, CUSTOM_DIR, transform=train_transform)
     val_dataset = CombinedDataset(VAL_DIR, transform=val_transform)
     
-    # B1 is larger, reduce batch size to avoid OOM
-    train_loader = DataLoader(train_dataset, batch_size=24, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_dataset, batch_size=24, shuffle=False, num_workers=2)
+    # B1 with batch size 32 for better training
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=2)
     
     print(f"Train samples: {len(train_dataset)}")
     print(f"Validation samples: {len(val_dataset)}")
@@ -223,9 +236,19 @@ def main():
     model = ImprovedOCR(num_classes=NUM_CLASSES, num_chars=MAX_PLATE_LEN)
     model = model.to(device)
     
+    # Load pretrained weights from augmented model
+    if os.path.exists(PRETRAINED_MODEL_PATH):
+        print(f"\nLoading pretrained weights from: {PRETRAINED_MODEL_PATH}")
+        pretrained = torch.load(PRETRAINED_MODEL_PATH, map_location=device, weights_only=False)
+        if 'model_state_dict' in pretrained:
+            model.load_state_dict(pretrained['model_state_dict'])
+        else:
+            model.load_state_dict(pretrained)
+        print("Pretrained weights loaded!")
+    
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0001)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
     
     start_epoch = 0
     best_val_acc = 0
@@ -247,7 +270,7 @@ def main():
             print(f"Resuming from epoch {start_epoch+1}, best_val_acc: {best_val_acc:.2f}%")
     
     print("\nStarting training...")
-    for epoch in range(start_epoch, 50):
+    for epoch in range(start_epoch, 100):
         train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
         val_loss, val_acc = validate(model, val_loader, criterion, device)
         scheduler.step()
