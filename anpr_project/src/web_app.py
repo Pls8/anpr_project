@@ -123,13 +123,20 @@ def video_start():
     """Start video capture"""
     global video_streaming, video_capture, video_thread
     
+    data = request.get_json() or {}
+    camera_index = data.get('camera', 0)  # Default to webcam 0
+    
     if video_streaming:
         return jsonify({'success': True, 'message': 'Already streaming'})
     
-    # Try to open webcam
-    video_capture = cv2.VideoCapture(0)
+    # Try to open webcam (index or URL)
+    try:
+        video_capture = cv2.VideoCapture(camera_index)
+    except Exception as e:
+        return jsonify({'error': f'Could not open camera: {str(e)}'}), 400
+    
     if not video_capture.isOpened():
-        return jsonify({'error': 'Could not open webcam'}), 400
+        return jsonify({'error': f'Could not open webcam (index {camera_index}). Try different index (0-5) or use /video/start_url for network camera'}), 400
     
     video_streaming = True
     video_thread = threading.Thread(target=video_capture_thread)
@@ -137,6 +144,31 @@ def video_start():
     video_thread.start()
     
     return jsonify({'success': True, 'message': 'Video streaming started'})
+
+
+@app.route('/video/start_url', methods=['POST'])
+def video_start_url():
+    """Start video capture from URL (e.g., DroidCam)"""
+    global video_streaming, video_capture, video_thread
+    
+    data = request.get_json() or {}
+    camera_url = data.get('url', 'http://192.168.1.100:4747/video')  # Default DroidCam URL
+    
+    if video_streaming:
+        return jsonify({'success': True, 'message': 'Already streaming'})
+    
+    # Try to open camera URL
+    video_capture = cv2.VideoCapture(camera_url)
+    
+    if not video_capture.isOpened():
+        return jsonify({'error': f'Could not open camera URL: {camera_url}. Make sure DroidCam is running and accessible'}), 400
+    
+    video_streaming = True
+    video_thread = threading.Thread(target=video_capture_thread)
+    video_thread.daemon = True
+    video_thread.start()
+    
+    return jsonify({'success': True, 'message': f'Video streaming started from {camera_url}'})
 
 
 @app.route('/video/stop', methods=['POST'])

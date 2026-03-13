@@ -175,8 +175,15 @@
             </div>
             
             <div class="controls">
-                <button id="startBtn" onclick="startCamera()">📹 Start Camera</button>
+                <button id="startBtn" onclick="startCamera(0)">📹 Camera 0</button>
+                <button id="startBtn1" onclick="startCamera(1)">📹 Camera 1</button>
+                <button id="startBtn2" onclick="startCamera(2)">📹 Camera 2</button>
                 <button id="stopBtn" onclick="stopCamera()" disabled>⏹ Stop Camera</button>
+            </div>
+            
+            <div style="text-align: center; margin-top: 10px;">
+                <input type="text" id="cameraUrl" placeholder="Or enter DroidCam URL (e.g. http://192.168.1.100:4747/video)" style="width: 300px; padding: 8px;">
+                <button onclick="startCameraUrl()">Start URL</button>
             </div>
             
             <div class="result">
@@ -193,19 +200,53 @@
     <script>
         let statusInterval;
         
-        async function startCamera() {
+        async function startCamera(cameraIndex = 0) {
             try {
-                const response = await fetch('/video/start', { method: 'POST' });
+                const response = await fetch('/video/start', { 
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({camera: cameraIndex})
+                });
                 const data = await response.json();
                 
                 if (data.success) {
                     document.getElementById('videoStream').style.display = 'block';
                     document.getElementById('noCamera').style.display = 'none';
                     document.getElementById('videoStream').src = '/video/feed?' + new Date().getTime();
-                    document.getElementById('startBtn').disabled = true;
+                    disableStartButtons();
                     document.getElementById('stopBtn').disabled = false;
                     
-                    // Start polling for status
+                    statusInterval = setInterval(updateStatus, 500);
+                } else {
+                    alert('Error: ' + data.error + '\n\nTry a different camera index (0, 1, 2) or use URL');
+                }
+            } catch (e) {
+                alert('Error starting camera: ' + e);
+            }
+        }
+        
+        async function startCameraUrl() {
+            const url = document.getElementById('cameraUrl').value;
+            if (!url) {
+                alert('Please enter a camera URL');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/video/start_url', { 
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: url})
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('videoStream').style.display = 'block';
+                    document.getElementById('noCamera').style.display = 'none';
+                    document.getElementById('videoStream').src = '/video/feed?' + new Date().getTime();
+                    disableStartButtons();
+                    document.getElementById('stopBtn').disabled = false;
+                    
                     statusInterval = setInterval(updateStatus, 500);
                 } else {
                     alert('Error: ' + data.error);
@@ -213,6 +254,12 @@
             } catch (e) {
                 alert('Error starting camera: ' + e);
             }
+        }
+        
+        function disableStartButtons() {
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('startBtn1').disabled = true;
+            document.getElementById('startBtn2').disabled = true;
         }
         
         async function stopCamera() {
@@ -223,6 +270,8 @@
                 document.getElementById('noCamera').style.display = 'flex';
                 document.getElementById('noCamera').textContent = 'Camera stopped';
                 document.getElementById('startBtn').disabled = false;
+                document.getElementById('startBtn1').disabled = false;
+                document.getElementById('startBtn2').disabled = false;
                 document.getElementById('stopBtn').disabled = true;
                 document.getElementById('plateText').textContent = '--';
                 
